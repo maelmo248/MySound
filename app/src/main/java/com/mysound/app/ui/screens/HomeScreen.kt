@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,7 +37,10 @@ import com.mysound.app.viewmodel.HomeViewModel
 import com.mysound.app.viewmodel.RadioStation
 
 @Composable
-fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
+fun HomeScreen(
+    viewModel: HomeViewModel = viewModel(),
+    onSettingsClick: () -> Unit = {}
+) {
     val playlists by viewModel.playlists.collectAsState()
     val topTracks by viewModel.topTracks.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -54,12 +58,24 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
         contentPadding = PaddingValues(vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // En-tête : Titre
+        // En-tête : Titre + bouton Paramètres en haut à droite
         item {
-            Text(
-                text = "Accueil",
-                style = MaterialTheme.typography.headlineLarge
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Accueil",
+                    style = MaterialTheme.typography.headlineLarge
+                )
+                IconButton(onClick = onSettingsClick) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Paramètres"
+                    )
+                }
+            }
         }
 
         // Section Playlists de l'utilisateur

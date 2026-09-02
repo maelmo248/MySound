@@ -35,7 +35,17 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "mysound_database"
                 )
-                    // .fallbackToDestructiveMigration() // Optionnel : vide la BDD en cas de changement de version si tu n'as pas configuré de Migration
+                    // CORRECTION : le schéma est passé en version 2 (ajout des playlists)
+                    // sans aucune Migration définie. Sans ceci, toute personne ayant déjà
+                    // l'app installée en version 1 plante au lancement avec
+                    // "IllegalStateException: A migration from 1 to 2 was required but not
+                    // found" dès que la BDD s'ouvre. fallbackToDestructiveMigration() vide
+                    // la BDD locale au lieu de planter — acceptable ici car il n'y a pas
+                    // encore de vraie Migration écrite, mais ça veut dire qu'un futur
+                    // changement de schéma effacera à nouveau bibliothèque/playlists de
+                    // tout le monde. À remplacer par de vraies Migration(...) si tu publies
+                    // l'app un jour.
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance

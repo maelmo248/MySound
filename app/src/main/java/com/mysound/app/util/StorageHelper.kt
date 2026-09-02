@@ -83,7 +83,20 @@ object StorageHelper {
                     android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
                     android.Manifest.permission.READ_EXTERNAL_STORAGE
                 )
-            else -> emptyArray()
+            // CORRECTION : avant, cette tranche (Android 10 à 12, API 29 à 32)
+            // tombait dans le "else -> emptyArray()" plus bas, donc AUCUNE
+            // permission de stockage n'était jamais demandée sur ces versions.
+            // Ça posait surtout problème sur Android 10 (API 29) à cause de
+            // "android:requestLegacyExternalStorage=true" dans le Manifest :
+            // ce flag n'est honoré QUE sur Android 10 (ignoré sur Android 11+,
+            // inexistant avant Android 10). Sur Android 10, il fait basculer
+            // l'appli dans l'ancien modèle de stockage, où elle PERD l'exemption
+            // "accès automatique aux fichiers créés par l'appli elle-même via
+            // MediaStore" propre au scoped storage — elle a donc de nouveau besoin
+            // de READ_EXTERNAL_STORAGE comme une appli pré-Android 10, faute de quoi
+            // la lecture des musiques déjà téléchargées peut échouer silencieusement.
+            else ->
+                arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
         }
     }
 }

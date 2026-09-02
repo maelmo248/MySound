@@ -23,6 +23,7 @@ import com.mysound.app.ui.screens.HomeScreen
 import com.mysound.app.ui.screens.LibraryScreen
 import com.mysound.app.ui.screens.PlaylistDetailScreen
 import com.mysound.app.ui.screens.SearchScreen
+import com.mysound.app.ui.screens.SettingsScreen
 import com.mysound.app.viewmodel.PlayerViewModel
 
 private sealed class BottomDestination(val route: String, val label: String, val icon: ImageVector) {
@@ -74,7 +75,9 @@ fun AppNavHost() {
             startDestination = BottomDestination.Home.route,
             modifier = androidx.compose.ui.Modifier.padding(padding)
         ) {
-            composable(BottomDestination.Home.route) { HomeScreen() }
+            composable(BottomDestination.Home.route) {
+                HomeScreen(onSettingsClick = { navController.navigate("settings") })
+            }
             composable(BottomDestination.Search.route) { SearchScreen() }
             composable(BottomDestination.Library.route) {
                 LibraryScreen(
@@ -94,6 +97,9 @@ fun AppNavHost() {
                     onBack = { navController.popBackStack() },
                     playerViewModel = playerViewModel
                 )
+            }
+            composable("settings") {
+                SettingsScreen(onBack = { navController.popBackStack() })
             }
         }
     }

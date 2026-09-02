@@ -80,15 +80,23 @@ class AudioPlayerManager(private val context: Context) {
                     updateCurrentSongFromController()
                 }
 
-                // Affiche clairement pourquoi une radio ne démarre pas (flux mort,
-                // timeout, format non supporté...) au lieu d'échouer en silence.
-                // Les URLs des radios commerciales changent régulièrement côté CDN :
-                // ce message aide à savoir tout de suite si c'est ça le problème.
+                // Affiche clairement pourquoi la lecture échoue (flux mort, timeout,
+                // format non supporté, fichier local introuvable...) au lieu d'échouer
+                // en silence. Les radios (ids négatifs, voir playRadio) et les musiques
+                // ont chacune leur propre message, pour ne plus afficher "radio" par
+                // erreur pendant la lecture d'une musique.
+                //
+                // Le code d'erreur (ex: ERROR_CODE_IO_FILE_NOT_FOUND) est affiché
+                // directement dans le Toast, pas seulement dans Logcat : utile pour
+                // diagnostiquer sur un appareil où on n'a pas facilement accès à
+                // adb logcat (il suffit de faire une capture d'écran du Toast).
                 override fun onPlayerError(error: PlaybackException) {
-                    Log.e("AudioPlayerManager", "Erreur de lecture radio : ${error.errorCodeName} - ${error.message}", error)
+                    val isRadio = (_currentSong.value?.id ?: 0L) < 0L
+                    val label = if (isRadio) "cette radio" else "cette musique"
+                    Log.e("AudioPlayerManager", "Erreur de lecture ($label) : ${error.errorCodeName} - ${error.message}", error)
                     Toast.makeText(
                         context,
-                        "Impossible de lire cette radio pour le moment (flux indisponible)",
+                        "Impossible de lire $label pour le moment.\nCode : ${error.errorCodeName}\n${error.message ?: ""}",
                         Toast.LENGTH_LONG
                     ).show()
                 }

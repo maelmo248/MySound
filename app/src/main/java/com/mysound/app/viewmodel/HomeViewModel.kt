@@ -27,7 +27,19 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as MySoundApplication
     private val repository by lazy { YtDlpRepository(app) }
     private val downloadRepository by lazy { DownloadRepository(application) }
-    val playerManager by lazy { AudioPlayerManager(application) }
+
+    // CORRECTION BUG RADIO/MUSIQUE : avant, cette ligne faisait `AudioPlayerManager(application)`,
+    // ce qui créait une DEUXIÈME instance d'AudioPlayerManager en plus de celle utilisée par
+    // PlayerViewModel (mini-lecteur / lecteur plein écran, partagés dans AppNavHost).
+    // Chaque instance ouvre sa PROPRE connexion MediaController vers MusicPlaybackService et
+    // enregistre son PROPRE Player.Listener (donc son propre onPlayerError). Résultat : deux
+    // connexions concurrentes vers la même session, dont les commandes (playRadio / playPlaylist)
+    // pouvaient s'exécuter dans le désordre selon la vitesse de connexion du contrôleur — d'où
+    // le message "radio" qui apparaissait parfois en essayant de lire une musique. Ce genre de
+    // course est plus ou moins rapide/visible selon l'appareil (CPU, charge du Binder...), ce qui
+    // explique que ça ne se reproduisait pas de façon fiable sur l'émulateur mais bien sur le
+    // téléphone Android 10. On réutilise maintenant la MÊME instance partagée que PlayerViewModel.
+    val playerManager: AudioPlayerManager by lazy { PlayerViewModel.getPlayerManager(application) }
 
     val playlists: StateFlow<List<PlaylistWithSongsCount>> =
         app.database.playlistDao().getAllPlaylistsWithCount()
@@ -127,12 +139,22 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun download(result: SearchResult) {
         viewModelScope.launch {
+            // CORRECTION : videoId a un index UNIQUE en base. Insérer deux fois la
+            // même musique (ex: elle apparaît à la fois dans "Top musique" et dans
+            // les résultats de recherche, ou l'utilisateur appuie deux fois vite)
+            // levait une SQLiteConstraintException. Comme cet insert était fait dans
+            // .onSuccess { } — donc EN DEHORS du runCatching { } — l'exception
+            // n'était jamais rattrapée et faisait planter l'app. isAlreadyDownloaded()
+            // existait déjà dans SongDao mais n'était jamais appelée nulle part.
+            if (app.database.songDao().isAlreadyDownloaded(result.videoId)) {
+                return@launch
+            }
+
             _downloadProgress.value = _downloadProgress.value + (result.videoId to 0f)
             runCatching {
-                downloadRepository.download(result) { progress ->
+                val song = downloadRepository.download(result) { progress ->
                     _downloadProgress.value = _downloadProgress.value + (result.videoId to progress)
                 }
-            }.onSuccess { song ->
                 app.database.songDao().insert(song)
             }.onFailure { e ->
                 e.printStackTrace()

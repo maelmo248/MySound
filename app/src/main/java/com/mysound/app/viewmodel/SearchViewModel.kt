@@ -86,12 +86,18 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     fun download(result: SearchResult) {
         viewModelScope.launch {
+            // Même correction que dans HomeViewModel.download() : évite le crash
+            // par SQLiteConstraintException (videoId unique) si la musique est déjà
+            // dans la bibliothèque.
+            if (app.database.songDao().isAlreadyDownloaded(result.videoId)) {
+                return@launch
+            }
+
             _downloadProgress.value = _downloadProgress.value + (result.videoId to 0f)
             runCatching {
-                downloadRepository.download(result) { progress ->
+                val song = downloadRepository.download(result) { progress ->
                     _downloadProgress.value = _downloadProgress.value + (result.videoId to progress)
                 }
-            }.onSuccess { song ->
                 app.database.songDao().insert(song)
             }.onFailure { e ->
                 e.printStackTrace() // regarde le Logcat filtré sur "DownloadRepository" si ça échoue encore
