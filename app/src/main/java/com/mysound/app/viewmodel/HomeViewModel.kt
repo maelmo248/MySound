@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -49,6 +50,23 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 emptyList()
             )
 
+    // videoId de la musique dont l'écoute est en cours de préparation (roue sur sa ligne)
+    val streamLoadingVideoId: StateFlow<String?> = AudioPlayerManager.streamLoadingVideoId
+
+    // Écoute d'un résultat (Top musiques) sans le télécharger
+    fun playPreview(result: SearchResult) = playerManager.playStream(result)
+
+    // videoId de toutes les musiques déjà dans la bibliothèque (pour afficher l'icône
+    // "déjà téléchargé" dans les Top musiques). Se met à jour tout seul.
+    val downloadedVideoIds: StateFlow<Set<String>> =
+        app.database.songDao().getAllVideoIds()
+            .map { it.toSet() }
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                emptySet()
+            )
+
     // Remplace les URLs par tes images locales quand tu les auras ajoutées, ex: com.mysound.app.R.drawable.logo_fun_radio
     val radioStations = listOf(
         RadioStation(
@@ -82,8 +100,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoadingMore = MutableStateFlow(false)
     val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
 
-    private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
-    val downloadProgress: StateFlow<Map<String, Float>> = _downloadProgress.asStateFlow()
+    // Progression partagée avec l'écran Recherche (voir DownloadRepository)
+    val downloadProgress: StateFlow<Map<String, Float>> = DownloadRepository.downloadProgress
 
     private val playlistUrl = "https://music.youtube.com/playlist?list=PL4fGSI1pDJn50iCQRUVmgUjOrCggCQ9nR"
 
@@ -138,28 +156,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun download(result: SearchResult) {
-        viewModelScope.launch {
-            // CORRECTION : videoId a un index UNIQUE en base. Insérer deux fois la
-            // même musique (ex: elle apparaît à la fois dans "Top musique" et dans
-            // les résultats de recherche, ou l'utilisateur appuie deux fois vite)
-            // levait une SQLiteConstraintException. Comme cet insert était fait dans
-            // .onSuccess { } — donc EN DEHORS du runCatching { } — l'exception
-            // n'était jamais rattrapée et faisait planter l'app. isAlreadyDownloaded()
-            // existait déjà dans SongDao mais n'était jamais appelée nulle part.
-            if (app.database.songDao().isAlreadyDownloaded(result.videoId)) {
-                return@launch
-            }
-
-            _downloadProgress.value = _downloadProgress.value + (result.videoId to 0f)
-            runCatching {
-                val song = downloadRepository.download(result) { progress ->
-                    _downloadProgress.value = _downloadProgress.value + (result.videoId to progress)
-                }
-                app.database.songDao().insert(song)
-            }.onFailure { e ->
-                e.printStackTrace()
-            }
-            _downloadProgress.value = _downloadProgress.value - result.videoId
-        }
+        // Toute la logique (vérifications, erreurs, nettoyage) est dans DownloadRepository
+        viewModelScope.launch { downloadRepository.downloadToLibrary(result) }
     }
 }

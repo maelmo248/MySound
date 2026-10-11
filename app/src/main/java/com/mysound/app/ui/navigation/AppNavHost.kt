@@ -76,15 +76,23 @@ fun AppNavHost() {
             modifier = androidx.compose.ui.Modifier.padding(padding)
         ) {
             composable(BottomDestination.Home.route) {
-                HomeScreen(onSettingsClick = { navController.navigate("settings") })
+                HomeScreen(
+                    onSettingsClick = { navController.navigate("settings") },
+                    onPlaylistClick = { playlistId ->
+                        navController.navigate("playlistDetail/$playlistId")
+                    }
+                )
             }
-            composable(BottomDestination.Search.route) { SearchScreen() }
+            composable(BottomDestination.Search.route) {
+                SearchScreen(onSettingsClick = { navController.navigate("settings") })
+            }
             composable(BottomDestination.Library.route) {
                 LibraryScreen(
                     playerViewModel = playerViewModel,
                     onPlaylistClick = { playlistId ->
                         navController.navigate("playlistDetail/$playlistId")
-                    }
+                    },
+                    onSettingsClick = { navController.navigate("settings") }
                 )
             }
             composable(

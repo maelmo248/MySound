@@ -8,9 +8,11 @@ import com.mysound.app.data.local.SearchHistoryEntity
 import com.mysound.app.data.remote.DownloadRepository
 import com.mysound.app.data.remote.SearchResult
 import com.mysound.app.data.remote.YtDlpRepository
+import com.mysound.app.player.AudioPlayerManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -26,6 +28,15 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     private val downloadRepository = DownloadRepository(application)
 
+    // Même lecteur partagé que le reste de l'appli (mini-lecteur, notification...)
+    private val playerManager by lazy { PlayerViewModel.getPlayerManager(application) }
+
+    // videoId de la musique dont l'écoute est en cours de préparation (roue sur sa ligne)
+    val streamLoadingVideoId: StateFlow<String?> = AudioPlayerManager.streamLoadingVideoId
+
+    // Écoute d'un résultat sans le télécharger
+    fun playPreview(result: SearchResult) = playerManager.playStream(result)
+
     // ... reste de ton code
 
 
@@ -37,15 +48,26 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 emptyList()
             )
 
+    // videoId de toutes les musiques déjà dans la bibliothèque. Comparaison par videoId (et non
+    // par titre) : c'est l'identifiant YouTube, unique et exact. Se met à jour tout seul après
+    // un téléchargement ou une suppression.
+    val downloadedVideoIds: StateFlow<Set<String>> =
+        app.database.songDao().getAllVideoIds()
+            .map { it.toSet() }
+            .stateIn(
+                viewModelScope,
+                kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000),
+                emptySet()
+            )
+
     private val _results = MutableStateFlow<List<SearchResult>>(emptyList())
     val results: StateFlow<List<SearchResult>> = _results.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    // videoId -> progression du téléchargement (0..100), ou null si pas en cours
-    private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
-    val downloadProgress: StateFlow<Map<String, Float>> = _downloadProgress.asStateFlow()
+    // videoId -> progression du téléchargement (0..100), partagée avec l'Accueil
+    val downloadProgress: StateFlow<Map<String, Float>> = DownloadRepository.downloadProgress
 
     fun search(query: String) {
         // --- AJOUTE CES DEUX LIGNES POUR PROTÉGER LA MÉMOIRE ---
@@ -85,24 +107,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun download(result: SearchResult) {
-        viewModelScope.launch {
-            // Même correction que dans HomeViewModel.download() : évite le crash
-            // par SQLiteConstraintException (videoId unique) si la musique est déjà
-            // dans la bibliothèque.
-            if (app.database.songDao().isAlreadyDownloaded(result.videoId)) {
-                return@launch
-            }
-
-            _downloadProgress.value = _downloadProgress.value + (result.videoId to 0f)
-            runCatching {
-                val song = downloadRepository.download(result) { progress ->
-                    _downloadProgress.value = _downloadProgress.value + (result.videoId to progress)
-                }
-                app.database.songDao().insert(song)
-            }.onFailure { e ->
-                e.printStackTrace() // regarde le Logcat filtré sur "DownloadRepository" si ça échoue encore
-            }
-            _downloadProgress.value = _downloadProgress.value - result.videoId
-        }
+        // Toute la logique (vérifications, erreurs, nettoyage) est dans DownloadRepository
+        viewModelScope.launch { downloadRepository.downloadToLibrary(result) }
     }
 }

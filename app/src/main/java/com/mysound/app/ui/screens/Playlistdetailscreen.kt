@@ -5,13 +5,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlaylistRemove
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,7 +24,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.mysound.app.data.local.SongEntity
-import com.mysound.app.ui.theme.BlueAccent
+import com.mysound.app.ui.components.ShuffleAndPlayButtons
+import com.mysound.app.util.rememberListItemSize
 import com.mysound.app.viewmodel.PlaylistViewModel
 import com.mysound.app.viewmodel.PlayerViewModel
 
@@ -38,6 +37,7 @@ fun PlaylistDetailScreen(
     playlistViewModel: PlaylistViewModel = viewModel()
 ) {
     val playlists by playlistViewModel.playlists.collectAsState()
+    val isShuffleEnabled by playerViewModel.isShuffleEnabled.collectAsState()
     val playlistName = playlists.find { it.id == playlistId }?.name ?: ""
 
     val songs by remember(playlistId) { playlistViewModel.getSongsInPlaylist(playlistId) }
@@ -93,25 +93,13 @@ fun PlaylistDetailScreen(
             )
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Gros bouton rond : lance la playlist à partir de la 1ère musique
-            Surface(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clickable(enabled = songs.isNotEmpty()) {
-                        playerViewModel.playTrack(songs, 0)
-                    },
-                shape = CircleShape,
-                color = BlueAccent
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Lancer la playlist",
-                        tint = Color.Black,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-            }
+            // Mélange + gros bouton Play (la lecture aléatoire ne pioche que dans CETTE playlist)
+            ShuffleAndPlayButtons(
+                isShuffleEnabled = isShuffleEnabled,
+                enabled = songs.isNotEmpty(),
+                onToggleShuffle = { playerViewModel.toggleShuffle() },
+                onPlay = { playerViewModel.playAll(songs) }
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -146,13 +134,14 @@ private fun PlaylistSongRow(
     onRemove: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val f = rememberListItemSize().factor // taille choisie dans Paramètres
 
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { onClick() }
-                .padding(vertical = 12.dp),
+                .padding(vertical = (12 * f).dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
@@ -160,7 +149,7 @@ private fun PlaylistSongRow(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(64.dp)
+                    .size((64 * f).dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.DarkGray)
             )
@@ -168,12 +157,12 @@ private fun PlaylistSongRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = song.title,
-                    fontSize = 16.sp,
+                    fontSize = (16 * f).sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(text = "MP3 local", fontSize = 14.sp, color = Color.Gray)
+                Text(text = "MP3 local", fontSize = (14 * f).sp, color = Color.Gray)
             }
 
             Box {

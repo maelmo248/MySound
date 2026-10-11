@@ -3,6 +3,7 @@ package com.mysound.app
 import android.app.Application
 import android.util.Log
 import com.mysound.app.data.local.AppDatabase
+import com.mysound.app.data.remote.DownloadRepository
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDL.UpdateChannel
 import kotlinx.coroutines.CompletableDeferred
@@ -22,6 +23,9 @@ class MySoundApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CoroutineScope(Dispatchers.IO).launch {
+            // Supprime les fichiers temporaires laissés par un téléchargement interrompu
+            DownloadRepository.cleanupTempFiles(this@MySoundApplication)
+
             try {
                 Log.i(TAG, "Début init YoutubeDL...")
                 YoutubeDL.getInstance().init(this@MySoundApplication)

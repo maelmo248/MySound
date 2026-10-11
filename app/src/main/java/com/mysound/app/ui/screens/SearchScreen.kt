@@ -11,11 +11,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -23,20 +25,39 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.mysound.app.data.remote.SearchResult
+import com.mysound.app.ui.components.DownloadedIcon
+import com.mysound.app.ui.theme.BlueAccent
+import com.mysound.app.util.ListItemSize
+import com.mysound.app.util.rememberListItemSize
 import com.mysound.app.viewmodel.SearchViewModel
 
 @Composable
-fun SearchScreen(viewModel: SearchViewModel = viewModel()) {
+fun SearchScreen(
+    viewModel: SearchViewModel = viewModel(),
+    onSettingsClick: () -> Unit = {}
+) {
     var query by remember { mutableStateOf("") }
     val recentSearches by viewModel.recentSearches.collectAsState()
     val results by viewModel.results.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
+    val downloadedIds by viewModel.downloadedVideoIds.collectAsState()
+    val loadingStreamId by viewModel.streamLoadingVideoId.collectAsState()
+    val itemSize = rememberListItemSize() // taille choisie dans Paramètres
 
     run {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
             Spacer(modifier = Modifier.height(16.dp))
-            Text(text = "Recherche", style = MaterialTheme.typography.headlineLarge)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "Recherche", style = MaterialTheme.typography.headlineLarge)
+                IconButton(onClick = onSettingsClick) {
+                    Icon(imageVector = Icons.Default.Settings, contentDescription = "Paramètres")
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
@@ -69,7 +90,11 @@ fun SearchScreen(viewModel: SearchViewModel = viewModel()) {
                             SearchResultRow(
                                 result = result,
                                 progress = downloadProgress[result.videoId],
-                                onDownload = { viewModel.download(result) }
+                                isDownloaded = result.videoId in downloadedIds,
+                                onDownload = { viewModel.download(result) },
+                                onPlay = { viewModel.playPreview(result) },
+                                isLoading = loadingStreamId == result.videoId,
+                                size = itemSize
                             )
                         }
                     }
@@ -113,34 +138,73 @@ fun SearchScreen(viewModel: SearchViewModel = viewModel()) {
 fun SearchResultRow(
     result: SearchResult,
     progress: Float?,
-    onDownload: () -> Unit
+    onDownload: () -> Unit,
+    // Vrai si la musique est déjà dans la bibliothèque (par défaut faux)
+    isDownloaded: Boolean = false,
+    // Appui sur la zone image + titre : écoute la musique sans la télécharger
+    onPlay: () -> Unit = {},
+    // Vrai pendant que l'écoute de cette musique se prépare (roue sur la pochette)
+    isLoading: Boolean = false,
+    // MOYEN par défaut : l'Accueil (Top musiques) n'est pas concerné par le réglage de taille
+    size: ListItemSize = ListItemSize.MEDIUM
 ) {
+    val f = size.factor
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = (8 * f).dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = result.thumbnailUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                result.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Text(
-                result.uploader,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        // Zone cliquable : pochette + titre + artiste
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { onPlay() },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size((56 * f).dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = result.thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.55f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size((24 * f).dp),
+                            strokeWidth = 2.dp,
+                            color = BlueAccent
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    result.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontSize = (16 * f).sp
+                )
+                Text(
+                    result.uploader,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = (11 * f).sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         Spacer(modifier = Modifier.width(8.dp))
         if (progress != null) {
@@ -154,6 +218,16 @@ fun SearchResultRow(
                     text = "${progress.toInt()}%",
                     style = MaterialTheme.typography.labelSmall,
                     fontSize = 9.sp
+                )
+            }
+        } else if (isDownloaded) {
+            // Déjà téléchargée : icône d'état (non cliquable) à la place du bouton de téléchargement
+            Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = DownloadedIcon,
+                    contentDescription = "Déjà téléchargé",
+                    tint = BlueAccent,
+                    modifier = Modifier.size(26.dp)
                 )
             }
         } else {

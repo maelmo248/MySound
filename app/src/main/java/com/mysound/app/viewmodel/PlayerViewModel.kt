@@ -27,6 +27,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     val currentPosition = AudioPlayerManager.currentPosition
     val duration = AudioPlayerManager.duration
 
+    // Vrai pendant que le flux d'une musique en aperçu se prépare (roue dans le mini-lecteur)
+    val isStreamLoading: StateFlow<Boolean> = AudioPlayerManager.isStreamLoading
+
+    // Lecture aléatoire (état partagé par toute l'appli)
+    val isShuffleEnabled: StateFlow<Boolean> = AudioPlayerManager.shuffleEnabled
+
     // Gère l'état visuel (Lecteur réduit ou Lecteur plein écran).
     val isExpanded: StateFlow<Boolean> = AudioPlayerManager.isExpanded
 
@@ -37,6 +43,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun playTrack(songs: List<SongEntity>, index: Int) {
         playerManager.playPlaylist(songs, index)
     }
+
+    // Bouton "Play" d'une liste (bibliothèque ou playlist) : respecte le mode aléatoire
+    fun playAll(songs: List<SongEntity>) = playerManager.playAll(songs)
+    fun toggleShuffle() = playerManager.toggleShuffle()
 
     fun togglePlayPause() = playerManager.togglePlayPause()
     fun skipNext() = playerManager.skipNext()

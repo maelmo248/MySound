@@ -39,13 +39,16 @@ import com.mysound.app.viewmodel.RadioStation
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = viewModel(),
-    onSettingsClick: () -> Unit = {}
+    onSettingsClick: () -> Unit = {},
+    onPlaylistClick: (Long) -> Unit = {}
 ) {
     val playlists by viewModel.playlists.collectAsState()
     val topTracks by viewModel.topTracks.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
+    val downloadedIds by viewModel.downloadedVideoIds.collectAsState()
+    val loadingStreamId by viewModel.streamLoadingVideoId.collectAsState()
 
     // États de défilement pour les scrollbars
     val playlistsScrollState = rememberLazyListState()
@@ -97,7 +100,10 @@ fun HomeScreen(
                             .drawHorizontalScrollbar(playlistsScrollState)
                     ) {
                         items(playlists, key = { it.id }) { playlist ->
-                            PlaylistCard(playlist = playlist)
+                            PlaylistCard(
+                                playlist = playlist,
+                                onClick = { onPlaylistClick(playlist.id) }
+                            )
                         }
                     }
                 }
@@ -142,7 +148,10 @@ fun HomeScreen(
                                 SearchResultRow(
                                     result = result,
                                     progress = downloadProgress[result.videoId],
-                                    onDownload = { viewModel.download(result) }
+                                    isDownloaded = result.videoId in downloadedIds,
+                                    onDownload = { viewModel.download(result) },
+                                    onPlay = { viewModel.playPreview(result) },
+                                    isLoading = loadingStreamId == result.videoId
                                 )
                             }
 

@@ -80,6 +80,7 @@ fun MiniPlayer(playerViewModel: PlayerViewModel) {
     val isPlaying by playerViewModel.isPlaying.collectAsState()
     val currentPosition by playerViewModel.currentPosition.collectAsState()
     val duration by playerViewModel.duration.collectAsState()
+    val isStreamLoading by playerViewModel.isStreamLoading.collectAsState()
 
     val progress = if (duration > 0) currentPosition.toFloat() / duration.toFloat() else 0f
 
@@ -115,12 +116,23 @@ fun MiniPlayer(playerViewModel: PlayerViewModel) {
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                IconButton(onClick = { playerViewModel.togglePlayPause() }) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = "Play/Pause",
-                        tint = Color.White
-                    )
+                if (isStreamLoading) {
+                    // Écoute en streaming : la musique se prépare
+                    Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                            color = BlueAccent
+                        )
+                    }
+                } else {
+                    IconButton(onClick = { playerViewModel.togglePlayPause() }) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Play/Pause",
+                            tint = Color.White
+                        )
+                    }
                 }
             }
             LinearProgressIndicator(

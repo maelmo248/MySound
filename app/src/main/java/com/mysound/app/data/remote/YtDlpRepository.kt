@@ -45,6 +45,33 @@ class YtDlpRepository(private val app: MySoundApplication) {
             }
         }
 
+    /**
+     * Récupère l'adresse DIRECTE du flux audio d'une vidéo, sans rien télécharger, pour
+     * l'écouter en streaming. Volontairement minimaliste pour être le plus rapide possible :
+     *  - -g : yt-dlp n'affiche que l'URL (pas de JSON complet à produire/parser) ;
+     *  - m4a (AAC) en priorité : lu nativement par ExoPlayer, avance rapide fiable ;
+     *  - client "android" : le même que pour la recherche et le téléchargement.
+     */
+    suspend fun getStreamUrl(videoId: String): String =
+        withContext(Dispatchers.IO) {
+            val initOk = app.initializationDeferred.await()
+            check(initOk) { "yt-dlp non initialisé" }
+
+            val request = YoutubeDLRequest("https://www.youtube.com/watch?v=$videoId")
+            request.addOption("-f", "bestaudio[ext=m4a]/bestaudio/best")
+            request.addOption("-g")
+            request.addOption("--no-playlist")
+            request.addOption("--no-warnings")
+            request.addOption("--socket-timeout", "10")
+            request.addOption("--extractor-args", "youtube:player_client=android")
+
+            val response = YoutubeDL.getInstance().execute(request)
+            response.out.lineSequence()
+                .map { it.trim() }
+                .firstOrNull { it.startsWith("http") }
+                ?: error("Aucune adresse de flux trouvée")
+        }
+
     suspend fun getPlaylistTracks(playlistUrl: String, maxResults: Int = 10): List<SearchResult> =
         withContext(Dispatchers.IO) {
             app.initializationDeferred.await()

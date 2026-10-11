@@ -1,5 +1,9 @@
 package com.mysound.app.ui.screens
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -26,6 +30,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.mysound.app.data.local.PlaylistWithSongsCount
 import com.mysound.app.data.local.SongEntity
+import com.mysound.app.ui.components.ShuffleAndPlayButtons
+import com.mysound.app.util.rememberListItemSize
 import com.mysound.app.viewmodel.LibraryViewModel
 import com.mysound.app.viewmodel.PlayerViewModel
 import com.mysound.app.viewmodel.PlaylistViewModel
@@ -36,10 +42,12 @@ fun LibraryScreen(
     libraryViewModel: LibraryViewModel = viewModel(),
     playlistViewModel: PlaylistViewModel = viewModel(),
     playerViewModel: PlayerViewModel = viewModel(),
-    onPlaylistClick: (Long) -> Unit = {}
+    onPlaylistClick: (Long) -> Unit = {},
+    onSettingsClick: () -> Unit = {}
 ) {
     val songs by libraryViewModel.songs.collectAsState()
     val playlists by playlistViewModel.playlists.collectAsState()
+    val isShuffleEnabled by playerViewModel.isShuffleEnabled.collectAsState()
 
     // Le bleu d'accentuation pour remplacer le vert
     val accentBlue = Color(0xFF3B82F6)
@@ -49,11 +57,53 @@ fun LibraryScreen(
     var newPlaylistName by remember { mutableStateOf("") }
     var songToAddToPlaylist by remember { mutableStateOf<SongEntity?>(null) }
 
+    // Suppression d'une musique : confirmation, puis éventuelle autorisation d'Android
+    var songToDelete by remember { mutableStateOf<SongEntity?>(null) }
+    var songAwaitingPermission by remember { mutableStateOf<SongEntity?>(null) }
+    val deletePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        songAwaitingPermission?.let {
+            libraryViewModel.onDeletePermissionResult(it, result.resultCode == Activity.RESULT_OK)
+        }
+        songAwaitingPermission = null
+    }
+    LaunchedEffect(libraryViewModel) {
+        libraryViewModel.permissionRequests.collect { request ->
+            songAwaitingPermission = request.song
+            deletePermissionLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
+        }
+    }
+
     // Observation des playlists contenant la musique actuellement sélectionnée
     val songPlaylists by remember(songToAddToPlaylist) {
         songToAddToPlaylist?.let { playlistViewModel.getPlaylistsForSong(it.videoId) } ?: flowOf(emptyList())
     }.collectAsState(initial = emptyList())
 
+
+    // 0. Pop-up : confirmer la suppression définitive d'une musique
+    songToDelete?.let { song ->
+        AlertDialog(
+            onDismissRequest = { songToDelete = null },
+            title = { Text("Supprimer la musique") },
+            text = {
+                Text(
+                    "Supprimer \"${song.title}\" ?\n\n" +
+                            "Le fichier audio sera aussi effacé du téléphone (dossier Musique/MySound). " +
+                            "Cette action est définitive."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    libraryViewModel.deleteSong(song)
+                    songToDelete = null
+                }) { Text("Supprimer", color = Color.Red) }
+            },
+            dismissButton = {
+                TextButton(onClick = { songToDelete = null }) { Text("Annuler", color = Color.Gray) }
+            }
+        )
+    }
 
     // 1. Pop-up : Créer une Nouvelle Playlist
     if (showNewPlaylistDialog) {
@@ -189,7 +239,16 @@ fun LibraryScreen(
             .padding(horizontal = 16.dp)
     ) {
         Spacer(modifier = Modifier.height(24.dp))
-        Text(text = "Bibliothèque", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Bibliothèque", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+            IconButton(onClick = onSettingsClick) {
+                Icon(imageVector = Icons.Default.Settings, contentDescription = "Paramètres")
+            }
+        }
         Spacer(modifier = Modifier.height(24.dp))
 
         // En-tête de la section "Playlists"
@@ -221,7 +280,19 @@ fun LibraryScreen(
 
             item {
                 Spacer(modifier = Modifier.height(24.dp))
-                Text(text = "Musiques", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "Musiques", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    ShuffleAndPlayButtons(
+                        isShuffleEnabled = isShuffleEnabled,
+                        enabled = songs.isNotEmpty(),
+                        onToggleShuffle = { playerViewModel.toggleShuffle() },
+                        onPlay = { playerViewModel.playAll(songs) }
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
@@ -230,7 +301,7 @@ fun LibraryScreen(
                     song = song,
                     onClick = { playerViewModel.playTrack(songs, index) },
                     onAddToPlaylist = { songToAddToPlaylist = song },
-                    onDelete = { libraryViewModel.deleteSong(song) }
+                    onDelete = { songToDelete = song }
                 )
             }
         }
@@ -299,13 +370,14 @@ fun SongRow(
     onDelete: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val f = rememberListItemSize().factor // taille choisie dans Paramètres
 
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { onClick() }
-                .padding(vertical = 12.dp),
+                .padding(vertical = (12 * f).dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
@@ -313,7 +385,7 @@ fun SongRow(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(64.dp)
+                    .size((64 * f).dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.DarkGray)
             )
@@ -321,12 +393,12 @@ fun SongRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = song.title,
-                    fontSize = 16.sp,
+                    fontSize = (16 * f).sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(text = "MP3 local", fontSize = 14.sp, color = Color.Gray)
+                Text(text = "MP3 local", fontSize = (14 * f).sp, color = Color.Gray)
             }
 
             Box {
@@ -355,7 +427,7 @@ fun SongRow(
         }
 
         HorizontalDivider(
-            modifier = Modifier.padding(start = 80.dp),
+            modifier = Modifier.padding(start = (64 * f + 16).dp),
             thickness = 0.5.dp,
             color = Color.DarkGray.copy(alpha = 0.5f)
         )
