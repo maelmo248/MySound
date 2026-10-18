@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import java.io.File
 import com.mysound.app.data.remote.SearchResult
 import com.mysound.app.ui.components.DownloadedIcon
 import com.mysound.app.ui.theme.BlueAccent
@@ -169,7 +170,8 @@ fun SearchResultRow(
                 contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
-                    model = result.thumbnailUrl,
+                    // Image locale du cache si on l'a, sinon l'adresse distante
+                    model = result.localThumbnailPath?.let { File(it) } ?: result.thumbnailUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()

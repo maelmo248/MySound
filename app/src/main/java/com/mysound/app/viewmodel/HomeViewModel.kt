@@ -7,12 +7,19 @@ import com.mysound.app.MySoundApplication
 import com.mysound.app.data.local.PlaylistWithSongsCount
 import com.mysound.app.data.remote.DownloadRepository
 import com.mysound.app.data.remote.SearchResult
-import com.mysound.app.data.remote.YtDlpRepository
+import com.mysound.app.data.repository.TopCatalog
+import com.mysound.app.data.repository.TopPlaylist
+import com.mysound.app.data.repository.TopRepository
 import com.mysound.app.player.AudioPlayerManager
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -23,10 +30,11 @@ data class RadioStation(
     val logo: Any // Peut être une URL String ou un identifiant local R.drawable.nom_image
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as MySoundApplication
-    private val repository by lazy { YtDlpRepository(app) }
+    private val topRepository by lazy { TopRepository(app) }
     private val downloadRepository by lazy { DownloadRepository(application) }
 
     // CORRECTION BUG RADIO/MUSIQUE : avant, cette ligne faisait `AudioPlayerManager(application)`,
@@ -91,55 +99,57 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         )
     )
 
-    private val _topTracks = MutableStateFlow<List<SearchResult>>(emptyList())
-    val topTracks: StateFlow<List<SearchResult>> = _topTracks.asStateFlow()
+    // Liste des tops proposés (définie dans TopCatalog). Le PREMIER est affiché au démarrage.
+    val topPlaylists: List<TopPlaylist> = TopCatalog.all
 
-    private val _isLoading = MutableStateFlow(true)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    private val _selectedTop = MutableStateFlow(TopCatalog.default)
+    val selectedTop: StateFlow<TopPlaylist> = _selectedTop.asStateFlow()
 
-    private val _isLoadingMore = MutableStateFlow(false)
-    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
+    // Liste complète du top choisi, lue dans la base (null = pas encore lue).
+    // Se met à jour toute seule quand une synchronisation modifie la base.
+    private val fullTop: StateFlow<List<SearchResult>?> = _selectedTop
+        .flatMapLatest { top ->
+            flow<List<SearchResult>?> {
+                emit(null)
+                emitAll(topRepository.observeTop(top.id))
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    // Tout le top est affiché d'un coup (c'est instantané, la liste est déjà en base)
+    val topTracks: StateFlow<List<SearchResult>> =
+        fullTop
+            .map { it.orEmpty() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Le top affiché est-il en cours de synchronisation ?
+    val isSyncing: StateFlow<Boolean> =
+        combine(_selectedTop, TopRepository.syncingTopIds) { top, ids -> top.id in ids }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    // Roue plein écran : seulement quand il n'y a encore RIEN à afficher pour ce top
+    // (tout premier lancement). Ensuite la liste en base s'affiche instantanément.
+    val isLoading: StateFlow<Boolean> =
+        combine(fullTop, isSyncing) { list, syncing -> list == null || (list.isEmpty() && syncing) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     // Progression partagée avec l'écran Recherche (voir DownloadRepository)
     val downloadProgress: StateFlow<Map<String, Float>> = DownloadRepository.downloadProgress
 
-    private val playlistUrl = "https://music.youtube.com/playlist?list=PL4fGSI1pDJn50iCQRUVmgUjOrCggCQ9nR"
-
     init {
-        loadTopTracks()
+        // Vérifie le top affiché (ne fait rien s'il a été synchronisé récemment)
+        topRepository.requestSync(_selectedTop.value)
     }
 
-    fun loadTopTracks() {
-        viewModelScope.launch {
-            _isLoading.value = true
-            runCatching {
-                repository.getPlaylistTracks(playlistUrl, maxResults = 10)
-            }.onSuccess { tracks ->
-                _topTracks.value = tracks
-            }.onFailure { e ->
-                e.printStackTrace()
-                _topTracks.value = emptyList()
-            }
-            _isLoading.value = false
-        }
+    fun selectTop(top: TopPlaylist) {
+        if (top.id == _selectedTop.value.id) return
+        _selectedTop.value = top
+        topRepository.requestSync(top)
     }
 
-    fun loadMoreTracks() {
-        val currentCount = _topTracks.value.size
-        if (currentCount >= 50 || _isLoadingMore.value || _isLoading.value) return
-
-        viewModelScope.launch {
-            _isLoadingMore.value = true
-            val targetCount = minOf(currentCount + 10, 50)
-            runCatching {
-                repository.getPlaylistTracks(playlistUrl, maxResults = targetCount)
-            }.onSuccess { tracks ->
-                _topTracks.value = tracks
-            }.onFailure { e ->
-                e.printStackTrace()
-            }
-            _isLoadingMore.value = false
-        }
+    // "Réessayer" : force une synchronisation du top affiché
+    fun refreshTop() {
+        topRepository.requestSync(_selectedTop.value, force = true)
     }
 
     fun playRadio(radio: RadioStation) {

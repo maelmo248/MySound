@@ -36,6 +36,7 @@ import com.mysound.app.data.local.PlaylistWithSongsCount
 import com.mysound.app.viewmodel.HomeViewModel
 import com.mysound.app.viewmodel.RadioStation
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = viewModel(),
@@ -45,14 +46,16 @@ fun HomeScreen(
     val playlists by viewModel.playlists.collectAsState()
     val topTracks by viewModel.topTracks.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val isSyncing by viewModel.isSyncing.collectAsState()
+    val selectedTop by viewModel.selectedTop.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     val downloadedIds by viewModel.downloadedVideoIds.collectAsState()
     val loadingStreamId by viewModel.streamLoadingVideoId.collectAsState()
 
     // États de défilement pour les scrollbars
     val playlistsScrollState = rememberLazyListState()
-    val tracksScrollState = rememberLazyListState()
+    // Nouvel état de défilement à chaque changement de top (retour en haut de liste)
+    val tracksScrollState = remember(selectedTop.id) { LazyListState() }
 
     LazyColumn(
         modifier = Modifier
@@ -110,13 +113,41 @@ fun HomeScreen(
             }
         }
 
-        // En-tête Top musique
+        // En-tête Top musique + sélecteur de top (pastilles défilantes)
         item {
-            Text(
-                text = "Top musique de la semaine",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
+            Column {
+                Text(
+                    text = "Top musique",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(viewModel.topPlaylists, key = { it.id }) { top ->
+                        FilterChip(
+                            selected = top.id == selectedTop.id,
+                            onClick = { viewModel.selectTop(top) },
+                            label = { Text(top.name, maxLines = 1) },
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                    }
+                }
+                // Fine barre discrète quand le top affiché se met à jour en arrière-plan
+                // (hauteur réservée pour que la page ne "saute" pas)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp)
+                        .height(3.dp)
+                ) {
+                    if (isSyncing && topTracks.isNotEmpty()) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
         }
 
         // Zone fixe Top Musique à défilement interne vertical
@@ -154,37 +185,6 @@ fun HomeScreen(
                                     isLoading = loadingStreamId == result.videoId
                                 )
                             }
-
-                            if (topTracks.size < 50) {
-                                item {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 12.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (isLoadingMore) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(28.dp),
-                                                strokeWidth = 2.5.dp
-                                            )
-                                        } else {
-                                            OutlinedButton(
-                                                onClick = { viewModel.loadMoreTracks() },
-                                                shape = RoundedCornerShape(20.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Add,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Text(text = "Voir plus (+10)")
-                                            }
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                     else -> {
@@ -192,11 +192,16 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "Impossible de charger le top de la semaine pour le moment.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "Impossible de charger ce top pour le moment.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                TextButton(onClick = { viewModel.refreshTop() }) {
+                                    Text("Réessayer")
+                                }
+                            }
                         }
                     }
                 }
