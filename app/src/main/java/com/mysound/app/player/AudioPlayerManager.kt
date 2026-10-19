@@ -54,6 +54,10 @@ class AudioPlayerManager(private val context: Context) {
         private val _shuffleEnabled = MutableStateFlow(false)
         val shuffleEnabled: StateFlow<Boolean> = _shuffleEnabled.asStateFlow()
 
+        // Lecture en boucle : quand elle est activée, la musique en cours se répète indéfiniment
+        private val _loopEnabled = MutableStateFlow(false)
+        val loopEnabled: StateFlow<Boolean> = _loopEnabled.asStateFlow()
+
         // --- Écoute en streaming (aperçu avant téléchargement) ---
         private val _isStreamLoading = MutableStateFlow(false)
         val isStreamLoading: StateFlow<Boolean> = _isStreamLoading.asStateFlow()
@@ -70,6 +74,7 @@ class AudioPlayerManager(private val context: Context) {
         // Sauvegarde du mode aléatoire pour qu'il reste activé après fermeture de l'appli
         private const val PREFS_NAME = "mysound_player_prefs"
         private const val KEY_SHUFFLE_ENABLED = "shuffle_enabled"
+        private const val KEY_LOOP_ENABLED = "loop_enabled"
     }
 
     private val prefs: SharedPreferences =
@@ -78,6 +83,7 @@ class AudioPlayerManager(private val context: Context) {
     init {
         // Restaure l'état sauvegardé dès la création du lecteur
         _shuffleEnabled.value = prefs.getBoolean(KEY_SHUFFLE_ENABLED, false)
+        _loopEnabled.value = prefs.getBoolean(KEY_LOOP_ENABLED, false)
     }
 
     fun setExpanded(expanded: Boolean) {
@@ -100,7 +106,7 @@ class AudioPlayerManager(private val context: Context) {
             val readyController = controllerFuture.get()
             controller = readyController
 
-            readyController.repeatMode = Player.REPEAT_MODE_ALL
+            applyRepeatMode(readyController)
 
             readyController.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -116,7 +122,11 @@ class AudioPlayerManager(private val context: Context) {
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     updateCurrentSongFromController()
-                    extendShuffleQueueIfNeeded(readyController)
+                    // Avec la boucle, la même musique "redémarre" (reason = REPEAT) :
+                    // ce n'est pas un vrai changement de musique, on ne touche pas à la file.
+                    if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
+                        extendShuffleQueueIfNeeded(readyController)
+                    }
                 }
 
                 // Affiche clairement pourquoi la lecture échoue (flux mort, timeout,
@@ -158,6 +168,12 @@ class AudioPlayerManager(private val context: Context) {
             pendingActions.forEach { it(readyController) }
             pendingActions.clear()
         }, MoreExecutors.directExecutor())
+    }
+
+    // Boucle activée : on répète la musique en cours (REPEAT_MODE_ONE).
+    // Sinon : comportement habituel, la file entière tourne en rond (REPEAT_MODE_ALL).
+    private fun applyRepeatMode(c: MediaController) {
+        c.repeatMode = if (_loopEnabled.value) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_ALL
     }
 
     private fun updateCurrentSongFromController() {
@@ -340,6 +356,13 @@ class AudioPlayerManager(private val context: Context) {
         }
     }
 
+    fun toggleLoop() {
+        val enabled = !_loopEnabled.value
+        _loopEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_LOOP_ENABLED, enabled).apply()
+        runWithController { applyRepeatMode(it) }
+    }
+
     // Activation en cours de lecture : on garde la musique courante, et on remplace
     // tout le reste de la file par les autres musiques du contexte, mélangées.
     // (Pas de coupure : on ne touche pas à l'élément en cours.)
@@ -462,7 +485,11 @@ class AudioPlayerManager(private val context: Context) {
     }
 
     fun skipNext() {
-        runWithController { it.seekToNext() }
+        runWithController {
+            // En mode boucle, Media3 ignore la répétition pour la navigation manuelle :
+            // sur la dernière musique, "suivant" ne ferait rien. On revient donc au début de la file.
+            if (_loopEnabled.value && !it.hasNextMediaItem()) it.seekTo(0, 0L) else it.seekToNext()
+        }
     }
 
     fun skipPrevious() {

@@ -150,6 +150,8 @@ fun FullScreenPlayer(song: SongEntity, playerViewModel: PlayerViewModel) {
     val isPlaying by playerViewModel.isPlaying.collectAsState()
     val currentPosition by playerViewModel.currentPosition.collectAsState()
     val duration by playerViewModel.duration.collectAsState()
+    val isShuffleEnabled by playerViewModel.isShuffleEnabled.collectAsState()
+    val isLoopEnabled by playerViewModel.isLoopEnabled.collectAsState()
 
     Column(
         modifier = Modifier
@@ -261,16 +263,26 @@ fun FullScreenPlayer(song: SongEntity, playerViewModel: PlayerViewModel) {
 
         Spacer(modifier = Modifier.weight(0.8f))
 
-        // Boutons de contrôle multimédia
+        // Boutons de contrôle multimédia :
+        // [Aléatoire] [Précédent] [Play/Pause] [Suivant] [Boucle]
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Lecture aléatoire (à gauche, à côté de "Précédent") : bleu quand activée
+            IconButton(onClick = { playerViewModel.toggleShuffle() }, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    imageVector = ShuffleIcon,
+                    contentDescription = if (isShuffleEnabled) "Désactiver la lecture aléatoire" else "Activer la lecture aléatoire",
+                    tint = if (isShuffleEnabled) BlueAccent else Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
             IconButton(onClick = { playerViewModel.skipPrevious() }, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Default.SkipPrevious, contentDescription = "Précédent", tint = Color.White, modifier = Modifier.size(36.dp))
             }
-            Spacer(modifier = Modifier.width(32.dp))
 
             // Bouton rond bleu central Play/Pause
             Surface(
@@ -290,9 +302,18 @@ fun FullScreenPlayer(song: SongEntity, playerViewModel: PlayerViewModel) {
                 }
             }
 
-            Spacer(modifier = Modifier.width(32.dp))
             IconButton(onClick = { playerViewModel.skipNext() }, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Default.SkipNext, contentDescription = "Suivant", tint = Color.White, modifier = Modifier.size(36.dp))
+            }
+
+            // Lecture en boucle de la musique actuelle (à droite, à côté de "Suivant") : bleu quand activée
+            IconButton(onClick = { playerViewModel.toggleLoop() }, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    imageVector = LoopIcon,
+                    contentDescription = if (isLoopEnabled) "Désactiver la lecture en boucle" else "Activer la lecture en boucle",
+                    tint = if (isLoopEnabled) BlueAccent else Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
             }
         }
 

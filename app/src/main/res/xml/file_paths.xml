@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dossier autorisé à être partagé avec l'installateur d'Android : les APK de mise à jour -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>
